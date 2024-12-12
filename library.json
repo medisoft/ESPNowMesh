@@ -1,0 +1,40 @@
+{
+    "name": "ESPMeshNow",
+    "version": "0.0.1",
+    "keywords": "communication, iot, automation, async, async-tcp, async-tcp-ssl, async-mqtt, mqtt, async-mqtt-client, esp32, esp32-s2, esp32-s3, esp32-c3, wt32-eth01, ethernet, espnow, mesh",
+    "description": "This library, ported to support ESP32/S2/S3/C3, WT32_ETH01 (ESP32 + LAN8720), implements a custom self-healing offline devices resistant mesh net using ESPNow",
+    "authors": 
+    [
+      {
+        "name":  "Mario Medina",
+        "url":   "https://github.com/medisoft",
+        "email": "osoverflow+githubcontact@gmail.com",
+        "maintainer": true
+      }  
+    ],
+    "repository":
+    {
+      "type": "git",
+      "url": "https://github.com/medisoft/ESPNowMesh.git"
+    },
+    "dependencies": 
+    [
+      {
+        "owner": "bblanchon",
+        "name": "ArduinoJson",
+        "version": ">=7.2.1",
+        "platforms": ["espressif32"]
+      },
+      {
+        "owner": "urban-machine",
+        "name": "xxHash",
+        "version": ">=0.8.1-pio.1",
+        "platforms": ["espressif32"]
+      }
+    ],
+    "license": "MIT",
+    "frameworks": "*",
+    "platforms": ["espressif32"],
+    "examples": "examples/*/*/*.ino",
+    "headers": ["esp_mesh_now.h"]
+  }
