@@ -36,5 +36,5 @@
     "frameworks": "*",
     "platforms": ["espressif32"],
     "examples": "examples/*/*/*.ino",
-    "headers": ["esp_mesh_now.h"]
+    "headers": ["ESPMeshNow.h"]
   }

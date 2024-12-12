@@ -6,7 +6,7 @@
 #include <esp_now.h>
 #include <Preferences.h>
 
-#include <esp_mesh_now.h>
+#include <ESPMeshNow.h>
 
 RTC_DATA_ATTR uint64_t messageCache[ESP_MESH_NOW_CACHE_ELEMENTS];
 RTC_DATA_ATTR int messageCachePointer = -1;
