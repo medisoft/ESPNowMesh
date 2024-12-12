@@ -98,5 +98,5 @@ namespace espmeshnow
 
 };
 
-using espMeshNow_t = espmeshnow::ESPMeshNow;
+using ESPMeshNow_t = espmeshnow::ESPMeshNow;
 #endif

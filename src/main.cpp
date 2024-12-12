@@ -1,7 +1,7 @@
 #include <Arduino.h>
-#include <esp_mesh_now.h>
+#include <ESPMeshNow.h>
 
-espMeshNow_t espMeshNow;
+ESPMeshNow_t espMeshNow;
 
 void receivedCallback(uint64_t from, String msg)
 {
