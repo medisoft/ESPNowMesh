@@ -11,6 +11,8 @@
 RTC_DATA_ATTR uint64_t messageCache[ESP_MESH_NOW_CACHE_ELEMENTS];
 RTC_DATA_ATTR int messageCachePointer = -1;
 
+#define STORAGE_BLOCK_START 0x80000 // Inicio de almacenamiento en bloques
+#define BLOCK_SIZE 512              // Tamaño de bloque
 namespace espmeshnow
 {
     ESPMeshNow *ESPMeshNow::instance = nullptr;
@@ -58,11 +60,32 @@ namespace espmeshnow
                 n = i;
             }
         }
+        esp_now_peer_info_t peer;
+        addressToMac(peersList[n].nodeId, peer.peer_addr);
+        if (esp_now_is_peer_exist(peer.peer_addr)) // Remueve el peer si existe, para no ocupar espacio de los limitados que hay
+        {
+            esp_now_del_peer(peer.peer_addr);
+        }
         peersList[n] = {nodeId, 255};
         espMeshNowPrefs.putBytes("peer_list", peersList, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
         Serial.println("Guardando peer nuevo");
     }
 
+    uint64_t ESPMeshNow::getLeastSeenPeer()
+    {
+        uint16_t i, l = 255;
+        int n = -1;
+
+        for (i = 0; i < ESP_MESH_NOW_PEERLIST_ELEMENTS; i++)
+        {
+            if (peersList[i].ttl < l)
+            {
+                l = peersList[i].ttl;
+                n = i;
+            }
+        }
+        return peersList[n].nodeId;
+    }
     uint16_t ESPMeshNow::peersCount()
     {
         uint16_t i, c = 0;
@@ -301,6 +324,18 @@ namespace espmeshnow
         Serial.printf("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, msg.c_str());
         if (!esp_now_is_peer_exist(peer.peer_addr))
         {
+            esp_now_peer_num_t num;
+            esp_now_get_peer_num(&num);
+            if (num.total_num + 1 >= ESP_NOW_MAX_TOTAL_PEER_NUM)
+            {
+                uint64_t leastUsedNodeId = getLeastSeenPeer();
+                esp_now_peer_info_t leastUsedPeer;
+                addressToMac(leastUsedNodeId, leastUsedPeer.peer_addr);
+                if (esp_now_is_peer_exist(peer.peer_addr)) // Remueve el peer si existe, para no ocupar espacio de los limitados que hay
+                {
+                    esp_now_del_peer(peer.peer_addr);
+                }
+            }
             Serial.println("Adding broadcast address as a peer");
             esp_now_add_peer(&peer);
         }

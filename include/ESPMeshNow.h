@@ -81,6 +81,7 @@ namespace espmeshnow
         void espNowSendCB(const uint8_t *mac_addr, esp_now_send_status_t status);
 
         void addPeer(uint64_t nodeId);
+        uint64_t getLeastSeenPeer();
         uint16_t peersCount();
         bool isMessageInCache(esp_mesh_now_packet_t packet, bool addIfNotExists);
         uint16_t messagesCount();
