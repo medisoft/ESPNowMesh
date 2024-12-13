@@ -89,6 +89,9 @@ namespace espmeshnow
 
         void packetSendResponse(esp_err_t result, const esp_now_peer_info_t *peer);
 
+        void loadPeersFromNVS();
+        void savePeersToNVS();
+
     private:
         static ESPMeshNow *instance; // Pointer to the active instance
         static void espNowRecvCBStatic(const uint8_t *mac_addr, const uint8_t *data, int data_len)

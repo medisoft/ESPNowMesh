@@ -4,20 +4,19 @@
 #include <esp_wifi.h>
 #include <xxh3.h>
 #include <esp_now.h>
-#include <Preferences.h>
+#include <nvs.h>
+#include <nvs_flash.h>
 
 #include <ESPMeshNow.h>
 
 RTC_DATA_ATTR uint64_t messageCache[ESP_MESH_NOW_CACHE_ELEMENTS];
 RTC_DATA_ATTR int messageCachePointer = -1;
 
-#define STORAGE_BLOCK_START 0x80000 // Inicio de almacenamiento en bloques
-#define BLOCK_SIZE 512              // Tamaño de bloque
 namespace espmeshnow
 {
     ESPMeshNow *ESPMeshNow::instance = nullptr;
 
-    Preferences espMeshNowPrefs;
+    nvs_handle_t nvsHandle; // Handle para acceder a NVS
 
     uint64_t ESPMeshNow::getNodeId() { return nodeId; }
     uint32_t ESPMeshNow::getNodeTime() { return micros() + timeOffset; }
@@ -46,7 +45,7 @@ namespace espmeshnow
             if (peersList[i].nodeId == 0)
             {
                 peersList[i] = {nodeId, 255};
-                espMeshNowPrefs.putBytes("peer_list", peersList, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
+                savePeersToNVS();
                 Serial.println("Guardando peer nuevo");
                 return;
             }
@@ -67,7 +66,7 @@ namespace espmeshnow
             esp_now_del_peer(peer.peer_addr);
         }
         peersList[n] = {nodeId, 255};
-        espMeshNowPrefs.putBytes("peer_list", peersList, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
+        savePeersToNVS();
         Serial.println("Guardando peer nuevo");
     }
 
@@ -215,6 +214,59 @@ namespace espmeshnow
         }
     }
 
+    // Guardar la lista de peers en NVS
+    void ESPMeshNow::savePeersToNVS()
+    {
+        esp_err_t err = nvs_open("espMesh", NVS_READWRITE, &nvsHandle);
+        if (err == ESP_OK)
+        {
+            unsigned int expectedSize = sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS;
+            err = nvs_set_blob(nvsHandle, "peer_list", peersList, expectedSize);
+            if (err == ESP_OK)
+            {
+                nvs_commit(nvsHandle);
+                Serial.println("Peers guardados en NVS.");
+            }
+            else
+            {
+                Serial.printf("Error guardando peers en NVS: %s\n", esp_err_to_name(err));
+            }
+            nvs_close(nvsHandle);
+        }
+        else
+        {
+            Serial.printf("Error abriendo NVS: %s\n", esp_err_to_name(err));
+        }
+    }
+
+    // Cargar la lista de peers desde NVS
+    void ESPMeshNow::loadPeersFromNVS()
+    {
+        esp_err_t err = nvs_open("espMesh", NVS_READONLY, &nvsHandle);
+        unsigned int expectedSize = sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS;
+        if (err == ESP_OK)
+        {
+            size_t requiredSize = expectedSize;
+            err = nvs_get_blob(nvsHandle, "peer_list", peersList, &requiredSize);
+            if (err == ESP_OK && requiredSize == expectedSize)
+            {
+                Serial.println("Peers cargados desde NVS.");
+            }
+            else
+            {
+                Serial.printf("Error cargando peers desde NVS: %s\n", esp_err_to_name(err));
+                memset(peersList, 0, expectedSize);
+                savePeersToNVS(); // Guarda los valores inicializados
+            }
+            nvs_close(nvsHandle);
+        }
+        else
+        {
+            Serial.printf("Error abriendo NVS: %s\n", esp_err_to_name(err));
+            memset(peersList, 0, expectedSize);
+        }
+    }
+
     bool ESPMeshNow::init(uint8_t channel)
     {
         this->instance = this;
@@ -223,9 +275,12 @@ namespace espmeshnow
         nodeId = ESP.getEfuseMac();
         nodeId = __builtin_bswap64(nodeId) >> 16;
 
-        if (!espMeshNowPrefs.begin("espmeshnowprefs", false))
+        esp_err_t err = nvs_flash_init();
+        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
         {
-            Serial.println("Error inicializando NVS");
+            // Borra y vuelve a inicializar NVS si es necesario
+            nvs_flash_erase();
+            nvs_flash_init();
             return false;
         }
 
@@ -235,15 +290,7 @@ namespace espmeshnow
             return false;
         }
 
-        if (espMeshNowPrefs.isKey("peer_list"))
-        {
-            espMeshNowPrefs.getBytes("peer_list", peersList, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
-        }
-        else
-        {
-            memset(peersList, 0, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
-            espMeshNowPrefs.putBytes("peer_list", peersList, sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS);
-        }
+        loadPeersFromNVS();
 
         if (messageCachePointer == -1)
         {
