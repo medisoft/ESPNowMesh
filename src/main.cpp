@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <ESPMeshNow.h>
 
 ESPMeshNow_t espMeshNow;
@@ -38,6 +39,14 @@ void setup()
 
   // espMeshNow.sendBroadcast("HOLA");
   espMeshNow.send(espMeshNow.getNodeId(), 0, "HOLA", espmeshnow::ESPMeshNowFlags_e::FORWARD);
+
+  JsonDocument doc;
+  doc["cmd"] = "OTA";
+  doc["time"] = esp_random();
+  String j;
+  serializeJson(doc, j);
+  Serial.println(j);
+  espMeshNow.send(espMeshNow.getNodeId(), 0, j, espmeshnow::ESPMeshNowFlags_e::FORWARD);
 }
 
 void loop()
