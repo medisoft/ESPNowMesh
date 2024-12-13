@@ -65,6 +65,7 @@ namespace espmeshnow
         bool isMyPeer(uint64_t nodeId);
         uint64_t macToAddress(uint8_t *mac_addr);
         void addressToMac(uint64_t addr, uint8_t *mac_addr);
+        bool isRunning();
         LogClass Log;
 
     protected:
@@ -96,6 +97,7 @@ namespace espmeshnow
                 instance->espNowRecvCB(mac_addr, data, data_len);
         };
         peers_list_t *peersList;
+        bool _initialized = false;
     };
 
 };

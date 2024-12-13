@@ -273,6 +273,8 @@ namespace espmeshnow
         esp_wifi_set_channel(_channel, WIFI_SECOND_CHAN_NONE);
 
         esp_now_register_recv_cb(espNowRecvCBStatic);
+
+        _initialized = true;
         return true;
     }
 
@@ -395,4 +397,6 @@ namespace espmeshnow
         }
         return peersList;
     }
+
+    bool ESPMeshNow::isRunning() { return _initialized; }
 };
