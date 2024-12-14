@@ -392,6 +392,14 @@ namespace espmeshnow
         esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&packet, sizeof(packet));
         packetSendResponse(result, &peer);
     }
+
+    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0)
+    {
+        String msg;
+        serializeJson(jsonDoc, msg);
+        send(srcId, dstId, msg, messageFlags | JSONDOC);
+    }
+
     void ESPMeshNow::packetSendResponse(esp_err_t result, const esp_now_peer_info_t *peer)
     {
         const uint8_t *peer_addr = peer->peer_addr;
@@ -432,6 +440,7 @@ namespace espmeshnow
             Serial.println("Not sure what happened");
         }
     }
+
     peers_list_t *ESPMeshNow::getKnownPeers()
     {
         for (int i = 0; i < ESP_MESH_NOW_PEERLIST_ELEMENTS; i++)

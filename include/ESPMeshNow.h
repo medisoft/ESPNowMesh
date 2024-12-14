@@ -1,6 +1,7 @@
 #ifndef _ESP_MESH_NOW_H_
 #define _ESP_MESH_NOW_H_
 #include <esp_now.h>
+#include <ArduinoJson.h>
 
 #define ESP_MESH_NOW_CACHE_ELEMENTS 500   // 512*4=2kb de RTC
 #define ESP_MESH_NOW_PEERLIST_ELEMENTS 50 // 450 bytes de NVS
@@ -17,6 +18,7 @@ namespace espmeshnow
     {
         FORWARD = 0b00000001,
         SIGNED = 0b00000010,
+        JSONDOC = 0b00000100,
     };
     typedef struct __attribute__((packed)) peers_list_t
     {
@@ -58,6 +60,7 @@ namespace espmeshnow
         void onChangedConnections(changedConnectionsCallback_t onChangedConnections);
         void onNodeTimeAdjusted(nodeTimeAdjustedCallback_t onTimeAdjusted);
         void send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags = 0);
+        void send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0);
         uint64_t getNodeId();
         uint32_t getNodeTime();
         void setDebugMsgTypes(uint16_t types);
