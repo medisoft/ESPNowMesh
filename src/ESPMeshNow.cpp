@@ -304,7 +304,7 @@ namespace espmeshnow
         }
     }
 
-    // Guardar la lista de peers en NVS
+    // Guardar la lista de elementos por enviar en NVS
     void ESPMeshNow::saveSendQueueToNVS()
     {
         if (sendQueuePtr < 0)
@@ -331,7 +331,7 @@ namespace espmeshnow
         }
     }
 
-    // Cargar la lista de peers desde NVS
+    // Cargar la lista de elementos por enviar desde NVS
     void ESPMeshNow::loadSendQueueFromNVS()
     {
         esp_err_t err = nvs_open("espMesh", NVS_READONLY, &nvsHandle);
@@ -355,7 +355,7 @@ namespace espmeshnow
         else
         {
             LOGF("Error abriendo NVS: %s\n", esp_err_to_name(err));
-            memset(peersList, 0, expectedSize);
+            memset(sendQueue, 0, expectedSize);
         }
     }
 
@@ -373,7 +373,8 @@ namespace espmeshnow
             // Borra y vuelve a inicializar NVS si es necesario
             nvs_flash_erase();
             nvs_flash_init();
-            return false;
+            if (!cleanNVS)
+                return false;
         }
 
         peersList = (peers_list_t *)malloc(sizeof(peers_list_t) * ESP_MESH_NOW_PEERLIST_ELEMENTS + 1);
