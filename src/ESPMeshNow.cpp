@@ -393,11 +393,19 @@ namespace espmeshnow
         packetSendResponse(result, &peer);
     }
 
-    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0)
+    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags)
     {
         String msg;
         serializeJson(jsonDoc, msg);
         send(srcId, dstId, msg, messageFlags | JSONDOC);
+    }
+
+    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags)
+    {
+        // String msg;
+        // serializeJson(jsonDoc, msg);
+        // send(srcId, dstId, msg, messageFlags | JSONDOC);
+        Serial.println("Not implemented");
     }
 
     void ESPMeshNow::packetSendResponse(esp_err_t result, const esp_now_peer_info_t *peer)
