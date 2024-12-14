@@ -3,11 +3,7 @@
 #include <esp_now.h>
 #include <ArduinoJson.h>
 
-#ifndef ESP_MESH_NOW_DEBUG_LOGGING
-#define ESP_MESH_NOW_DEBUG_LOGGING 0
-#endif
-
-#if ESP_MESH_NOW_DEBUG_LOGGING == 1
+#ifdef ESP_MESH_NOW_DEBUG_LOGGING
 #define LOG(x) Serial.print(x)
 #define LOGLN(x) Serial.println(x)
 #define LOGF(...) Serial.printf(__VA_ARGS__)
@@ -36,6 +32,7 @@ namespace espmeshnow
         FORWARD = 0b00000001,
         SIGNED = 0b00000010,
         JSONDOC = 0b00000100,
+        RETRY = 0b00001000,
     };
     typedef struct __attribute__((packed)) peers_list_t
     {
@@ -121,6 +118,9 @@ namespace espmeshnow
 
         void loadPeersFromNVS();
         void savePeersToNVS();
+        void loadSendQueueFromNVS();
+        void saveSendQueueToNVS();
+        void addESPNowPeer(esp_now_peer_info_t peer);
 
     private:
         static ESPMeshNow *instance; // Pointer to the active instance

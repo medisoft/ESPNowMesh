@@ -1,6 +1,7 @@
+#define ESP_MESH_NOW_DEBUG_LOGGING
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#define ESP_MESH_NOW_DEBUG_LOGGING 1
 #include <ESPMeshNow.h>
 
 ESPMeshNow_t espMeshNow;
@@ -51,6 +52,7 @@ void loop()
     // delay(120e3);
     while (true)
     {
+      espMeshNow.handle();
       if (Serial.available())
       {
         String cmd = Serial.readStringUntil('\n');
@@ -59,9 +61,8 @@ void loop()
         cmd.trim();
         jsonDoc["cmd"] = cmd;
         jsonDoc["sq"] = esp_random();
-        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc);
+        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
       }
-      espMeshNow.handle();
       delay(50);
     }
   }

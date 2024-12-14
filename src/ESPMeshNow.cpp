@@ -26,6 +26,26 @@ namespace espmeshnow
     uint32_t ESPMeshNow::getNodeTime() { return micros() + timeOffset; }
     void ESPMeshNow::setDebugMsgTypes(uint16_t types) { Log.setLogLevel(types); }
 
+    void ESPMeshNow::addESPNowPeer(esp_now_peer_info_t peer)
+    {
+        if (!esp_now_is_peer_exist(peer.peer_addr))
+        {
+            esp_now_peer_num_t num;
+            esp_now_get_peer_num(&num);
+            if (num.total_num + 1 >= ESP_NOW_MAX_TOTAL_PEER_NUM)
+            {
+                uint64_t leastUsedNodeId = getLeastSeenPeer();
+                esp_now_peer_info_t leastUsedPeer;
+                addressToMac(leastUsedNodeId, leastUsedPeer.peer_addr);
+                if (esp_now_is_peer_exist(peer.peer_addr)) // Remueve el peer si existe, para no ocupar espacio de los limitados que hay
+                {
+                    esp_now_del_peer(peer.peer_addr);
+                }
+            }
+            esp_now_add_peer(&peer);
+        }
+    }
+
     void ESPMeshNow::addPeer(uint64_t nodeId)
     {
         uint16_t i, l = 255;
@@ -284,6 +304,61 @@ namespace espmeshnow
         }
     }
 
+    // Guardar la lista de peers en NVS
+    void ESPMeshNow::saveSendQueueToNVS()
+    {
+        if (sendQueuePtr < 0)
+            return;
+        esp_err_t err = nvs_open("espMesh", NVS_READWRITE, &nvsHandle);
+        if (err == ESP_OK)
+        {
+            unsigned int expectedSize = sizeof(send_queue_t) * (sendQueuePtr + 1);
+            err = nvs_set_blob(nvsHandle, "send_queue", sendQueue, expectedSize);
+            if (err == ESP_OK)
+            {
+                nvs_commit(nvsHandle);
+                LOGLN("Send Queue guardado en NVS.");
+            }
+            else
+            {
+                LOGF("Error guardando Send Queue  en NVS: %s\n", esp_err_to_name(err));
+            }
+            nvs_close(nvsHandle);
+        }
+        else
+        {
+            LOGF("Error abriendo NVS: %s\n", esp_err_to_name(err));
+        }
+    }
+
+    // Cargar la lista de peers desde NVS
+    void ESPMeshNow::loadSendQueueFromNVS()
+    {
+        esp_err_t err = nvs_open("espMesh", NVS_READONLY, &nvsHandle);
+        unsigned int expectedSize = sizeof(send_queue_t) * ESP_MESH_NOW_SEND_QUEUE_LEN;
+        if (err == ESP_OK)
+        {
+            size_t requiredSize = expectedSize;
+            err = nvs_get_blob(nvsHandle, "send_queue", sendQueue, &requiredSize);
+            if (err == ESP_OK && requiredSize % sizeof(send_queue_t) == 0)
+            {
+                sendQueuePtr = (requiredSize / sizeof(send_queue_t)) - 1;
+                LOGLN("Send Queue cargado desde NVS.");
+            }
+            else
+            {
+                LOGF("Error cargando Send Qeueu desde NVS: %s\n", esp_err_to_name(err));
+                saveSendQueueToNVS(); // Guarda los valores inicializados
+            }
+            nvs_close(nvsHandle);
+        }
+        else
+        {
+            LOGF("Error abriendo NVS: %s\n", esp_err_to_name(err));
+            memset(peersList, 0, expectedSize);
+        }
+    }
+
     bool ESPMeshNow::init(uint8_t channel)
     {
         this->instance = this;
@@ -308,6 +383,7 @@ namespace espmeshnow
         }
 
         loadPeersFromNVS();
+        loadSendQueueFromNVS();
 
         if (messageCachePointer == -1)
         {
@@ -394,23 +470,7 @@ namespace espmeshnow
         memset(packet.signature, 0, sizeof(packet.signature));
         uint64_t to = macToAddress((uint8_t *)peer.peer_addr);
         LOGF("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, msg.c_str());
-        if (!esp_now_is_peer_exist(peer.peer_addr))
-        {
-            esp_now_peer_num_t num;
-            esp_now_get_peer_num(&num);
-            if (num.total_num + 1 >= ESP_NOW_MAX_TOTAL_PEER_NUM)
-            {
-                uint64_t leastUsedNodeId = getLeastSeenPeer();
-                esp_now_peer_info_t leastUsedPeer;
-                addressToMac(leastUsedNodeId, leastUsedPeer.peer_addr);
-                if (esp_now_is_peer_exist(peer.peer_addr)) // Remueve el peer si existe, para no ocupar espacio de los limitados que hay
-                {
-                    esp_now_del_peer(peer.peer_addr);
-                }
-            }
-            LOGLN("Adding broadcast address as a peer");
-            esp_now_add_peer(&peer);
-        }
+        addESPNowPeer(peer);
         esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
         lastSendError = ESP_ERR_NOT_FINISHED;
         esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&packet, sizeof(packet));
@@ -418,11 +478,12 @@ namespace espmeshnow
             delay(1);
         if (lastSendError != ESP_NOW_SEND_SUCCESS)
         {
-            if (_sendQueueEnabled)
+            if (_sendQueueEnabled && (messageFlags & RETRY) == RETRY)
             {
                 if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN)
                 {
                     memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
+                    saveSendQueueToNVS();
                 }
             }
             result = ESP_NOW_SEND_FAIL;
@@ -484,7 +545,7 @@ namespace espmeshnow
             if (!esp_now_is_peer_exist(peer_addr))
             {
                 LOGLN("Adding peer");
-                esp_now_add_peer(peer);
+                addESPNowPeer(*peer);
             }
         }
         if (result == ESP_NOW_SEND_FAIL)
@@ -523,7 +584,11 @@ namespace espmeshnow
             for (int i = 0; i <= sendQueuePtr; i++)
             {
                 esp_now_peer_info_t peer;
+                memset(&peer, 0, sizeof(esp_now_peer_info_t));
+                peer.channel = _channel;
+                peer.encrypt = 0; // no encryption
                 addressToMac(sendQueue[i].packet.dst, peer.peer_addr);
+                addESPNowPeer(peer);
                 lastSendError = ESP_ERR_NOT_FINISHED;
                 esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&sendQueue[i].packet, sizeof(esp_mesh_now_packet_t));
                 for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
@@ -534,19 +599,21 @@ namespace espmeshnow
                     sendQueue[i].retries++;
                     if (sendQueue[i].retries > ESP_MESH_NOW_SEND_RETRIES)
                     {
-                        for (int j = i + 1; j < sendQueuePtr; j++)
+                        for (int j = i + 1; j <= sendQueuePtr; j++)
                             sendQueue[i] = sendQueue[j];
                         i--;
                         sendQueuePtr--;
+                        saveSendQueueToNVS();
                     }
                 }
                 else
                 {
                     LOGLN("****** Reenviado OK");
-                    for (int j = i + 1; j < sendQueuePtr; j++)
+                    for (int j = i + 1; j <= sendQueuePtr; j++)
                         sendQueue[i] = sendQueue[j];
                     i--;
                     sendQueuePtr--;
+                    saveSendQueueToNVS();
                 }
             }
             LOGF("SendQueue: %d / %d\n", sendQueuePtr + 1, ESP_MESH_NOW_SEND_QUEUE_LEN);
