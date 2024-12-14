@@ -3,6 +3,20 @@
 #include <esp_now.h>
 #include <ArduinoJson.h>
 
+#ifndef ESP_MESH_NOW_DEBUG_LOGGING
+#define ESP_MESH_NOW_DEBUG_LOGGING 1
+#endif
+
+#if ESP_MESH_NOW_DEBUG_LOGGING == 1
+#define LOG(x) Serial.print(x)
+#define LOGLN(x) Serial.println(x)
+#define LOGF(...) Serial.printf(__VA_ARGS__)
+#else
+#define LOG(x)
+#define LOGLN(x)
+#define LOGF(...)
+#endif
+
 #define ESP_MESH_NOW_CACHE_ELEMENTS 500   // 512*4=2kb de RTC
 #define ESP_MESH_NOW_PEERLIST_ELEMENTS 50 // 450 bytes de NVS
 #define ESP_MESH_NOW_SEND_QUEUE_LEN 10
@@ -79,6 +93,7 @@ namespace espmeshnow
         void addressToMac(uint64_t addr, uint8_t *mac_addr);
         bool isRunning();
         void handle();
+        void enableSendQueue(bool enabled = true);
         LogClass Log;
 
     protected:
@@ -121,6 +136,7 @@ namespace espmeshnow
         };
         peers_list_t *peersList;
         bool _initialized = false;
+        bool _sendQueueEnabled = true;
     };
 
 };

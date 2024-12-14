@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#define ESP_MESH_NOW_DEBUG_LOGGING 0
 #include <ESPMeshNow.h>
 
 ESPMeshNow_t espMeshNow;

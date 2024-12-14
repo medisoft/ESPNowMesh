@@ -50,7 +50,7 @@ namespace espmeshnow
             {
                 peersList[i] = {nodeId, 255};
                 savePeersToNVS();
-                Serial.println("Guardando peer nuevo");
+                LOGLN("Guardando peer nuevo");
                 return;
             }
         }
@@ -71,7 +71,7 @@ namespace espmeshnow
         }
         peersList[n] = {nodeId, 255};
         savePeersToNVS();
-        Serial.println("Guardando peer nuevo");
+        LOGLN("Guardando peer nuevo");
     }
 
     uint64_t ESPMeshNow::getLeastSeenPeer()
@@ -175,7 +175,7 @@ namespace espmeshnow
             {
                 if (packet.dataLen > sizeof(packet.data))
                 {
-                    Serial.println("Paquete corrupto, largo demasiado grande");
+                    LOGLN("Paquete corrupto, largo demasiado grande");
                 }
                 else
                 {
@@ -183,46 +183,46 @@ namespace espmeshnow
 
                     packet.data[packet.dataLen] = 0;
 
-                    Serial.printf("Mensaje de %llX (real %llX) para %llX y soy %llX\n", packet.src, from, packet.dst, getNodeId());
+                    LOGF("Mensaje de %llX (real %llX) para %llX y soy %llX\n", packet.src, from, packet.dst, getNodeId());
                     if (isMessageInCache(packet, true))
                     {
-                        Serial.println("********** Ya lo tengo en el cache de recientes, no lo proceso");
+                        LOGLN("********** Ya lo tengo en el cache de recientes, no lo proceso");
                     }
                     else
                     {
                         // SI viene firmado, verifico la firma
                         if ((packet.messageFlags & SIGNED) == SIGNED)
                         {
-                            Serial.println("********** Viene firmado: " + String(packet.messageFlags));
+                            LOGLN("********** Viene firmado: " + String(packet.messageFlags));
                         }
 
                         // Es para mi
                         if (packet.dst == getNodeId())
                         {
-                            Serial.println("********** Es para mi");
+                            LOGLN("********** Es para mi");
                             receivedCallback(from, String((char *)packet.data));
                         }
                         else if (packet.dst == 0) // Es para todos
                         {
                             if (packet.messageFlags & FORWARD == FORWARD) // Es para todos y pide forward
                             {
-                                Serial.println("********** Es para todos y pide forward");
+                                LOGLN("********** Es para todos y pide forward");
                                 send(packet.src, packet.dst, String((char *)packet.data), packet.messageFlags);
                             }
                             else // Es para todos y no pide forward
                             {
-                                Serial.println("********** Es para todos");
+                                LOGLN("********** Es para todos");
                             }
                             receivedCallback(from, String((char *)packet.data));
                         }
                         else if (isMyPeer(packet.dst)) // Es para alguien mas y es mi vecino
                         {
-                            Serial.println("********** Es para alguien mas y es mi vecino");
+                            LOGLN("********** Es para alguien mas y es mi vecino");
                             send(packet.src, packet.dst, String((char *)packet.data), packet.messageFlags);
                         }
                         else if ((packet.messageFlags & FORWARD) == FORWARD) // Es para alguien mas y pide forward
                         {
-                            Serial.println("********** Es para alguien mas y pide forward");
+                            LOGLN("********** Es para alguien mas y pide forward");
                             send(packet.src, packet.dst, String((char *)packet.data), packet.messageFlags);
                         }
                     }
@@ -242,17 +242,17 @@ namespace espmeshnow
             if (err == ESP_OK)
             {
                 nvs_commit(nvsHandle);
-                Serial.println("Peers guardados en NVS.");
+                LOGLN("Peers guardados en NVS.");
             }
             else
             {
-                Serial.printf("Error guardando peers en NVS: %s\n", esp_err_to_name(err));
+                LOGF("Error guardando peers en NVS: %s\n", esp_err_to_name(err));
             }
             nvs_close(nvsHandle);
         }
         else
         {
-            Serial.printf("Error abriendo NVS: %s\n", esp_err_to_name(err));
+            LOGF("Error abriendo NVS: %s\n", esp_err_to_name(err));
         }
     }
 
@@ -267,11 +267,11 @@ namespace espmeshnow
             err = nvs_get_blob(nvsHandle, "peer_list", peersList, &requiredSize);
             if (err == ESP_OK && requiredSize == expectedSize)
             {
-                Serial.println("Peers cargados desde NVS.");
+                LOGLN("Peers cargados desde NVS.");
             }
             else
             {
-                Serial.printf("Error cargando peers desde NVS: %s\n", esp_err_to_name(err));
+                LOGF("Error cargando peers desde NVS: %s\n", esp_err_to_name(err));
                 memset(peersList, 0, expectedSize);
                 savePeersToNVS(); // Guarda los valores inicializados
             }
@@ -279,7 +279,7 @@ namespace espmeshnow
         }
         else
         {
-            Serial.printf("Error abriendo NVS: %s\n", esp_err_to_name(err));
+            LOGF("Error abriendo NVS: %s\n", esp_err_to_name(err));
             memset(peersList, 0, expectedSize);
         }
     }
@@ -311,7 +311,7 @@ namespace espmeshnow
 
         if (messageCachePointer == -1)
         {
-            Serial.println("Inicializando messageCache");
+            LOGLN("Inicializando messageCache");
             memset(messageCache, 0, sizeof(messageCache));
             messageCachePointer = 0;
         }
@@ -322,13 +322,13 @@ namespace espmeshnow
 
         if (esp_now_init() == ESP_OK)
         {
-            Serial.print("My mac address is: ");
-            Serial.printf("%llX", getNodeId());
-            Serial.println(": ESPNow Init Success");
+            LOG("My mac address is: ");
+            LOGF("%llX", getNodeId());
+            LOGLN(": ESPNow Init Success");
         }
         else
         {
-            Serial.println("ESPNow Init Failed");
+            LOGLN("ESPNow Init Failed");
             free(peersList);
             return false;
         }
@@ -393,7 +393,7 @@ namespace espmeshnow
         packet.messageFlags = messageFlags;
         memset(packet.signature, 0, sizeof(packet.signature));
         uint64_t to = macToAddress((uint8_t *)peer.peer_addr);
-        Serial.printf("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, msg.c_str());
+        LOGF("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, msg.c_str());
         if (!esp_now_is_peer_exist(peer.peer_addr))
         {
             esp_now_peer_num_t num;
@@ -408,7 +408,7 @@ namespace espmeshnow
                     esp_now_del_peer(peer.peer_addr);
                 }
             }
-            Serial.println("Adding broadcast address as a peer");
+            LOGLN("Adding broadcast address as a peer");
             esp_now_add_peer(&peer);
         }
         esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
@@ -418,9 +418,12 @@ namespace espmeshnow
             delay(1);
         if (lastSendError != ESP_NOW_SEND_SUCCESS)
         {
-            if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN)
+            if (_sendQueueEnabled)
             {
-                memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
+                if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN)
+                {
+                    memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
+                }
             }
             result = ESP_NOW_SEND_FAIL;
         }
@@ -445,7 +448,7 @@ namespace espmeshnow
         // String msg;
         // serializeJson(jsonDoc, msg);
         // send(srcId, dstId, msg, messageFlags | JSONDOC);
-        Serial.println("Not implemented");
+        LOGLN("Not implemented");
         return ESP_ERR_INVALID_STATE;
     }
 
@@ -453,44 +456,44 @@ namespace espmeshnow
     {
         const uint8_t *peer_addr = peer->peer_addr;
 
-        Serial.print("Broadcast Status: ");
+        LOG("Broadcast Status: ");
         if (result == ESP_OK)
         {
-            Serial.println("Success");
+            LOGLN("Success");
         }
         else if (result == ESP_ERR_ESPNOW_NOT_INIT)
         {
             // How did we get so far!!
-            Serial.println("ESPNOW not Init.");
+            LOGLN("ESPNOW not Init.");
         }
         else if (result == ESP_ERR_ESPNOW_ARG)
         {
-            Serial.println("Invalid Argument");
+            LOGLN("Invalid Argument");
         }
         else if (result == ESP_ERR_ESPNOW_INTERNAL)
         {
-            Serial.println("Internal Error");
+            LOGLN("Internal Error");
         }
         else if (result == ESP_ERR_ESPNOW_NO_MEM)
         {
-            Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+            LOGLN("ESP_ERR_ESPNOW_NO_MEM");
         }
         else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
         {
-            Serial.println("Peer not found.");
+            LOGLN("Peer not found.");
             if (!esp_now_is_peer_exist(peer_addr))
             {
-                Serial.println("Adding peer");
+                LOGLN("Adding peer");
                 esp_now_add_peer(peer);
             }
         }
         if (result == ESP_NOW_SEND_FAIL)
         {
-            Serial.println("Failed to send, maybe offline");
+            LOGLN("Failed to send, maybe offline");
         }
         else
         {
-            Serial.println("Not sure what happened");
+            LOGLN("Not sure what happened");
         }
     }
 
@@ -508,13 +511,14 @@ namespace espmeshnow
     }
 
     bool ESPMeshNow::isRunning() { return _initialized; }
+    void ESPMeshNow::enableSendQueue(bool enabled) { _sendQueueEnabled = enabled; }
 
     void ESPMeshNow::handle()
     {
         if (!newMessageReceived)
             return;
         newMessageReceived = false;
-        if (sendQueuePtr >= 0)
+        if (_sendQueueEnabled && sendQueuePtr >= 0)
         {
             for (int i = 0; i <= sendQueuePtr; i++)
             {
@@ -526,7 +530,7 @@ namespace espmeshnow
                     delay(1);
                 if (lastSendError != ESP_NOW_SEND_SUCCESS)
                 {
-                    Serial.printf("****** Fallo al reenviar (%d) %s\n", lastSendError, esp_err_to_name(lastSendError));
+                    LOGF("****** Fallo al reenviar (%d) %s\n", lastSendError, esp_err_to_name(lastSendError));
                     sendQueue[i].retries++;
                     if (sendQueue[i].retries > ESP_MESH_NOW_SEND_RETRIES)
                     {
@@ -538,14 +542,14 @@ namespace espmeshnow
                 }
                 else
                 {
-                    Serial.println("****** Reenviado OK");
+                    LOGLN("****** Reenviado OK");
                     for (int j = i + 1; j < sendQueuePtr; j++)
                         sendQueue[i] = sendQueue[j];
                     i--;
                     sendQueuePtr--;
                 }
             }
-            Serial.printf("SendQueue: %d / %d\n", sendQueuePtr + 1, ESP_MESH_NOW_SEND_QUEUE_LEN);
+            LOGF("SendQueue: %d / %d\n", sendQueuePtr + 1, ESP_MESH_NOW_SEND_QUEUE_LEN);
         }
     }
 };
