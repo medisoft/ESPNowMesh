@@ -72,7 +72,7 @@ namespace espmeshnow
     class ESPMeshNow
     {
     public:
-        bool init(uint8_t channel = 1);
+        bool init(uint8_t channel = 1, bool cleanNVS = false);
         void onReceive(receivedCallback_t onReceive);
         void onSend(sentCallback_t onSend); // TODO
         void onNewConnection(newConnectionCallback_t onNewConnection);

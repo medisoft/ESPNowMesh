@@ -359,7 +359,7 @@ namespace espmeshnow
         }
     }
 
-    bool ESPMeshNow::init(uint8_t channel)
+    bool ESPMeshNow::init(uint8_t channel, bool cleanNVS)
     {
         this->instance = this;
 
@@ -368,7 +368,7 @@ namespace espmeshnow
         nodeId = __builtin_bswap64(nodeId) >> 16;
 
         esp_err_t err = nvs_flash_init();
-        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND)
+        if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND || cleanNVS)
         {
             // Borra y vuelve a inicializar NVS si es necesario
             nvs_flash_erase();
