@@ -184,21 +184,22 @@ namespace espmeshnow
 
     void ESPMeshNow::espNowRecvCB(const uint8_t *mac_addr, const uint8_t *data, int data_len)
     {
-        newMessageReceived = true;
-        if (receivedCallback)
+        uint64_t from = 0;
+        from = macToAddress((uint8_t *)mac_addr);
+        esp_mesh_now_packet_t packet;
+        memcpy(&packet, data, data_len > sizeof(esp_mesh_now_packet_t) ? sizeof(esp_mesh_now_packet_t) : data_len);
+        if (packet.protocolVersion == protocolVersion_e::ESP_MESH_NOW)
         {
-            uint64_t from = 0;
-            from = macToAddress((uint8_t *)mac_addr);
-            esp_mesh_now_packet_t packet;
-            memcpy(&packet, data, data_len > sizeof(esp_mesh_now_packet_t) ? sizeof(esp_mesh_now_packet_t) : data_len);
-            if (packet.protocolVersion == protocolVersion_e::ESP_MESH_NOW)
+            if (packet.dataLen > sizeof(packet.data))
             {
-                if (packet.dataLen > sizeof(packet.data))
+                LOGLN("Paquete corrupto, largo demasiado grande");
+            }
+            else
+            {
+                newMessageReceived = true;
+                if (receivedCallback)
                 {
-                    LOGLN("Paquete corrupto, largo demasiado grande");
-                }
-                else
-                {
+
                     addPeer(from);
 
                     packet.data[packet.dataLen] = 0;
