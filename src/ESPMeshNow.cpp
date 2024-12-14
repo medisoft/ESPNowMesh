@@ -16,6 +16,10 @@ namespace espmeshnow
 {
     ESPMeshNow *ESPMeshNow::instance = nullptr;
 
+    send_queue_t sendQueue[ESP_MESH_NOW_SEND_QUEUE_LEN];
+    volatile int sendQueuePtr = -1;
+    volatile bool newMessageReceived = false;
+
     nvs_handle_t nvsHandle; // Handle para acceder a NVS
 
     uint64_t ESPMeshNow::getNodeId() { return nodeId; }
@@ -146,13 +150,26 @@ namespace espmeshnow
         return false;
     }
 
+    void ESPMeshNow::espNowSendCB(const uint8_t *mac_addr, esp_now_send_status_t status)
+    {
+        lastSendError = status;
+        if (sentCallback)
+        {
+            uint64_t to = 0;
+            esp_mesh_now_packet_t packet;
+            to = macToAddress((uint8_t *)mac_addr);
+            sentCallback(to, status);
+        }
+    }
+
     void ESPMeshNow::espNowRecvCB(const uint8_t *mac_addr, const uint8_t *data, int data_len)
     {
+        newMessageReceived = true;
         if (receivedCallback)
         {
             uint64_t from = 0;
-            esp_mesh_now_packet_t packet;
             from = macToAddress((uint8_t *)mac_addr);
+            esp_mesh_now_packet_t packet;
             memcpy(&packet, data, data_len > sizeof(esp_mesh_now_packet_t) ? sizeof(esp_mesh_now_packet_t) : data_len);
             if (packet.protocolVersion == protocolVersion_e::ESP_MESH_NOW)
             {
@@ -320,6 +337,7 @@ namespace espmeshnow
         esp_wifi_set_channel(_channel, WIFI_SECOND_CHAN_NONE);
 
         esp_now_register_recv_cb(espNowRecvCBStatic);
+        esp_now_register_send_cb(espNowSendCBStatic);
 
         _initialized = true;
         return true;
@@ -328,6 +346,11 @@ namespace espmeshnow
     void ESPMeshNow::onReceive(receivedCallback_t onReceive)
     {
         ESPMeshNow::receivedCallback = onReceive;
+    }
+
+    void ESPMeshNow::onSend(sentCallback_t onSend)
+    {
+        ESPMeshNow::sentCallback = onSend;
     }
 
     void ESPMeshNow::onNewConnection(newConnectionCallback_t onNewConnection)
@@ -345,7 +368,7 @@ namespace espmeshnow
         ESPMeshNow::nodeTimeAdjustedCallback = onNodeTimeAdjusted;
     }
 
-    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags)
+    esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags)
     {
         esp_now_peer_info_t peer;
         esp_mesh_now_packet_t packet;
@@ -389,23 +412,41 @@ namespace espmeshnow
             esp_now_add_peer(&peer);
         }
         esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
+        lastSendError = ESP_ERR_NOT_FINISHED;
         esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&packet, sizeof(packet));
-        packetSendResponse(result, &peer);
+        for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
+            delay(1);
+        if (lastSendError != ESP_NOW_SEND_SUCCESS)
+        {
+            if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN)
+            {
+                memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
+            }
+            result = ESP_NOW_SEND_FAIL;
+        }
+        if (result != ESP_OK)
+            packetSendResponse(result, &peer);
+        return result;
     }
 
-    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags)
+    esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags)
     {
         String msg;
+        if (measureJson(jsonDoc) > sizeof(esp_mesh_now_packet_t::data))
+        {
+            return ESP_ERR_INVALID_SIZE;
+        }
         serializeJson(jsonDoc, msg);
-        send(srcId, dstId, msg, messageFlags | JSONDOC);
+        return send(srcId, dstId, msg, messageFlags | JSONDOC);
     }
 
-    void ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags)
+    esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags)
     {
         // String msg;
         // serializeJson(jsonDoc, msg);
         // send(srcId, dstId, msg, messageFlags | JSONDOC);
         Serial.println("Not implemented");
+        return ESP_ERR_INVALID_STATE;
     }
 
     void ESPMeshNow::packetSendResponse(esp_err_t result, const esp_now_peer_info_t *peer)
@@ -443,6 +484,10 @@ namespace espmeshnow
                 esp_now_add_peer(peer);
             }
         }
+        if (result == ESP_NOW_SEND_FAIL)
+        {
+            Serial.println("Failed to send, maybe offline");
+        }
         else
         {
             Serial.println("Not sure what happened");
@@ -463,4 +508,44 @@ namespace espmeshnow
     }
 
     bool ESPMeshNow::isRunning() { return _initialized; }
+
+    void ESPMeshNow::handle()
+    {
+        if (!newMessageReceived)
+            return;
+        newMessageReceived = false;
+        if (sendQueuePtr >= 0)
+        {
+            for (int i = 0; i <= sendQueuePtr; i++)
+            {
+                esp_now_peer_info_t peer;
+                addressToMac(sendQueue[i].packet.dst, peer.peer_addr);
+                lastSendError = ESP_ERR_NOT_FINISHED;
+                esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&sendQueue[i].packet, sizeof(esp_mesh_now_packet_t));
+                for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
+                    delay(1);
+                if (lastSendError != ESP_NOW_SEND_SUCCESS)
+                {
+                    Serial.printf("****** Fallo al reenviar (%d) %s\n", lastSendError, esp_err_to_name(lastSendError));
+                    sendQueue[i].retries++;
+                    if (sendQueue[i].retries > ESP_MESH_NOW_SEND_RETRIES)
+                    {
+                        for (int j = i + 1; j < sendQueuePtr; j++)
+                            sendQueue[i] = sendQueue[j];
+                        i--;
+                        sendQueuePtr--;
+                    }
+                }
+                else
+                {
+                    Serial.println("****** Reenviado OK");
+                    for (int j = i + 1; j < sendQueuePtr; j++)
+                        sendQueue[i] = sendQueue[j];
+                    i--;
+                    sendQueuePtr--;
+                }
+            }
+            Serial.printf("SendQueue: %d / %d\n", sendQueuePtr + 1, ESP_MESH_NOW_SEND_QUEUE_LEN);
+        }
+    }
 };

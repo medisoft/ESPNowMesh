@@ -5,6 +5,9 @@
 
 #define ESP_MESH_NOW_CACHE_ELEMENTS 500   // 512*4=2kb de RTC
 #define ESP_MESH_NOW_PEERLIST_ELEMENTS 50 // 450 bytes de NVS
+#define ESP_MESH_NOW_SEND_QUEUE_LEN 10
+#define ESP_MESH_NOW_SEND_TIMEOUT_MS 50
+#define ESP_MESH_NOW_SEND_RETRIES 50
 
 namespace espmeshnow
 {
@@ -28,10 +31,10 @@ namespace espmeshnow
     typedef std::function<void(uint64_t nodeId)> newConnectionCallback_t;
     typedef std::function<void(uint64_t nodeId)> droppedConnectionCallback_t;
     typedef std::function<void(uint64_t from, String msg)> receivedCallback_t;
+    typedef std::function<void(uint64_t to, esp_now_send_status_t status)> sentCallback_t;
     typedef std::function<void()> changedConnectionsCallback_t;
     typedef std::function<void(int32_t offset)> nodeTimeAdjustedCallback_t;
     typedef std::function<void(uint64_t nodeId, int32_t delay)> nodeDelayCallback_t;
-
     typedef struct __attribute__((packed)) esp_mesh_now_packet_t
     {
         uint8_t protocolVersion;
@@ -42,6 +45,11 @@ namespace espmeshnow
         uint8_t dataLen;
         byte data[215];
     } esp_mesh_now_packet_t;
+    typedef struct send_queue_t
+    {
+        esp_mesh_now_packet_t packet;
+        int retries;
+    } send_queue_t;
 
     class LogClass
     {
@@ -55,13 +63,13 @@ namespace espmeshnow
     public:
         bool init(uint8_t channel = 1);
         void onReceive(receivedCallback_t onReceive);
-        void onSend(receivedCallback_t onSend); // TODO
+        void onSend(sentCallback_t onSend); // TODO
         void onNewConnection(newConnectionCallback_t onNewConnection);
         void onChangedConnections(changedConnectionsCallback_t onChangedConnections);
         void onNodeTimeAdjusted(nodeTimeAdjustedCallback_t onTimeAdjusted);
-        void send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags = 0);
-        void send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0);
-        void send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags = 0);
+        esp_err_t send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags = 0);
+        esp_err_t send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0);
+        esp_err_t send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags = 0);
         uint64_t getNodeId();
         uint32_t getNodeTime();
         void setDebugMsgTypes(uint16_t types);
@@ -70,14 +78,17 @@ namespace espmeshnow
         uint64_t macToAddress(uint8_t *mac_addr);
         void addressToMac(uint64_t addr, uint8_t *mac_addr);
         bool isRunning();
+        void handle();
         LogClass Log;
 
     protected:
         uint8_t _channel = 1;
         uint64_t nodeId;
         uint32_t timeOffset = 0;
+        volatile esp_err_t lastSendError = ESP_ERR_NOT_FINISHED;
 
         receivedCallback_t receivedCallback;
+        sentCallback_t sentCallback;
         newConnectionCallback_t newConnectionCallback;
         changedConnectionsCallback_t changedConnectionsCallback;
         nodeTimeAdjustedCallback_t nodeTimeAdjustedCallback;
@@ -102,6 +113,11 @@ namespace espmeshnow
         {
             if (instance)
                 instance->espNowRecvCB(mac_addr, data, data_len);
+        };
+        static void espNowSendCBStatic(const uint8_t *mac_addr, esp_now_send_status_t status)
+        {
+            if (instance)
+                instance->espNowSendCB(mac_addr, status);
         };
         peers_list_t *peersList;
         bool _initialized = false;
