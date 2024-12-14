@@ -463,7 +463,11 @@ namespace espmeshnow
         peer.channel = _channel;
         peer.encrypt = 0; // no encryption
 
-        packet.dataLen = msg.length() > sizeof(packet.data) ? sizeof(packet.data) : msg.length();
+        if (msg.length() > sizeof(packet.data))
+        {
+            return ESP_ERR_INVALID_SIZE;
+        }
+        packet.dataLen = msg.length();
         memcpy(packet.data, msg.c_str(), packet.dataLen);
         packet.protocolVersion = ESP_MESH_NOW;
         packet.dst = dstId;
