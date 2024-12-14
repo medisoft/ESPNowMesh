@@ -4,7 +4,7 @@
 #include <ArduinoJson.h>
 
 #ifndef ESP_MESH_NOW_DEBUG_LOGGING
-#define ESP_MESH_NOW_DEBUG_LOGGING 1
+#define ESP_MESH_NOW_DEBUG_LOGGING 0
 #endif
 
 #if ESP_MESH_NOW_DEBUG_LOGGING == 1
