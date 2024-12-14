@@ -588,7 +588,14 @@ namespace espmeshnow
                 memset(&peer, 0, sizeof(esp_now_peer_info_t));
                 peer.channel = _channel;
                 peer.encrypt = 0; // no encryption
-                addressToMac(sendQueue[i].packet.dst, peer.peer_addr);
+                if (sendQueue[i].packet.dst != 0 && isMyPeer(sendQueue[i].packet.dst))
+                {
+                    addressToMac(sendQueue[i].packet.dst, peer.peer_addr);
+                }
+                else
+                {
+                    memcpy(peer.peer_addr, ESP_MESH_NOW_BROADCAST_ADDR, sizeof(peer.peer_addr));
+                }
                 addESPNowPeer(peer);
                 lastSendError = ESP_ERR_NOT_FINISHED;
                 esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&sendQueue[i].packet, sizeof(esp_mesh_now_packet_t));

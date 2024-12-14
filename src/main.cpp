@@ -62,7 +62,7 @@ void loop()
         jsonDoc["cmd"] = cmd;
         jsonDoc["sq"] = esp_random();
         espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
-        // espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
+        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
       }
       delay(50);
     }
