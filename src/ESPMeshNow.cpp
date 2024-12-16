@@ -179,6 +179,9 @@ namespace espmeshnow {
             if ((packet.messageFlags & SIGNED) == SIGNED) {
               LOGLN("********** Viene firmado: " + String(packet.messageFlags));
             }
+            if ((packet.messageFlags & ENCRYPTED) == ENCRYPTED) {
+              LOGLN("********** Viene encriptado: " + String(packet.messageFlags));
+            }
 
             // Es para mi
             if (packet.dst == getNodeId()) {
@@ -365,6 +368,22 @@ namespace espmeshnow {
   }
 
   esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags) {
+    if (msg.length() > sizeof(esp_mesh_now_packet_t::data)) {
+      return ESP_ERR_INVALID_SIZE;
+    }
+    return send(srcId, dstId, (uint8_t *)msg.c_str(), msg.length(), (messageFlags & (0xff ^ (0xff & ENCODING_PACK))) | ENCODING_STRING);
+  }
+
+  esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags) {
+    String msg;
+    if (measureJson(jsonDoc) > sizeof(esp_mesh_now_packet_t::data)) {
+      return ESP_ERR_INVALID_SIZE;
+    }
+    serializeJson(jsonDoc, msg);
+    return send(srcId, dstId, (uint8_t *)msg.c_str(), msg.length(), (messageFlags & (0xff ^ (0xff & ENCODING_PACK))) | ENCODING_JSON);
+  }
+
+  esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, size_t len, uint8_t messageFlags) {
     esp_now_peer_info_t   peer;
     esp_mesh_now_packet_t packet;
     memset(&peer, 0, sizeof(peer));
@@ -377,18 +396,25 @@ namespace espmeshnow {
     peer.channel = _channel;
     peer.encrypt = 0; // no encryption
 
-    if (msg.length() > sizeof(packet.data)) {
+    if (len > sizeof(packet.data)) {
       return ESP_ERR_INVALID_SIZE;
     }
-    packet.dataLen = msg.length();
-    memcpy(packet.data, msg.c_str(), packet.dataLen);
+    packet.dataLen = len;
+    memcpy(packet.data, data, packet.dataLen);
     packet.protocolVersion = ESP_MESH_NOW;
     packet.dst             = dstId;
     packet.src             = getNodeId();
     packet.messageFlags    = messageFlags;
     memset(packet.signature, 0, sizeof(packet.signature));
+    if ((packet.messageFlags & SIGNED) == SIGNED) {
+    }
+    if ((packet.messageFlags & ENCRYPTED) == ENCRYPTED) {
+    }
     uint64_t to = macToAddress((uint8_t *)peer.peer_addr);
-    LOGF("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, msg.c_str());
+    if ((packet.messageFlags & ENCODING_STRING) == ENCODING_STRING || (packet.messageFlags & ENCODING_JSON) == ENCODING_JSON)
+      LOGF("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, data);
+    else
+      LOGF("Enviando mensaje de %llX para %llX (real %llX)\n", srcId, dstId, to);
     addESPNowPeer(peer);
     esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
     lastSendError    = ESP_ERR_NOT_FINISHED;
@@ -407,23 +433,6 @@ namespace espmeshnow {
     if (result != ESP_OK)
       packetSendResponse(result, &peer);
     return result;
-  }
-
-  esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags) {
-    String msg;
-    if (measureJson(jsonDoc) > sizeof(esp_mesh_now_packet_t::data)) {
-      return ESP_ERR_INVALID_SIZE;
-    }
-    serializeJson(jsonDoc, msg);
-    return send(srcId, dstId, msg, messageFlags | ENCODING_JSON);
-  }
-
-  esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags) {
-    // String msg;
-    // serializeJson(jsonDoc, msg);
-    // send(srcId, dstId, msg, messageFlags | ENCODING_JSON);
-    LOGLN("Not implemented");
-    return ESP_ERR_INVALID_STATE;
   }
 
   void ESPMeshNow::packetSendResponse(esp_err_t result, const esp_now_peer_info_t *peer) {

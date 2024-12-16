@@ -76,7 +76,7 @@ namespace espmeshnow {
     void          onNodeTimeAdjusted(nodeTimeAdjustedCallback_t onTimeAdjusted);
     esp_err_t     send(uint64_t srcId, uint64_t dstId, String msg, uint8_t messageFlags = 0);
     esp_err_t     send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags = 0);
-    esp_err_t     send(uint64_t srcId, uint64_t dstId, uint8_t *data, uint8_t messageFlags = 0);
+    esp_err_t     send(uint64_t srcId, uint64_t dstId, uint8_t *data, size_t len, uint8_t messageFlags = 0);
     uint64_t      getNodeId();
     uint32_t      getNodeTime();
     void          setDebugMsgTypes(uint16_t types);
