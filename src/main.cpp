@@ -6,28 +6,23 @@
 
 ESPMeshNow_t espMeshNow;
 
-void receivedCallback(uint64_t from, String msg)
-{
+void receivedCallback(uint64_t from, String msg) {
   Serial.printf(">>> Received from %llX msg=%s\n", from, msg.c_str());
 }
 
-void sentCallback(uint64_t to, esp_now_send_status_t status)
-{
-  Serial.printf("<<< Sent to %llX msg=(%d) %s\n", to, status, status == ESP_NOW_SEND_SUCCESS ? "SUCCESS" : "FAILURE");
+void sentCallback(uint64_t to, esp_now_send_status_t status) {
+  Serial.printf("<<< Sent to %llX status=%s\n", to, status == ESP_NOW_SEND_SUCCESS ? "SUCCESS" : "FAILURE");
 }
 
-void newConnectionCallback(uint32_t nodeId)
-{
+void newConnectionCallback(uint32_t nodeId) {
   Serial.printf("--> startHere: New Connection, nodeId = %u\n", nodeId);
 }
 
-void changedConnectionCallback()
-{
+void changedConnectionCallback() {
   Serial.printf("Changed connections\n");
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
   espMeshNow.init(2);
   espMeshNow.onReceive(&receivedCallback);
@@ -44,33 +39,26 @@ void setup()
   // espMeshNow.send(espMeshNow.getNodeId(), 0, doc, espmeshnow::ESPMeshNowFlags_e::FORWARD);
 }
 
-void loop()
-{
+void loop() {
   Serial.println("Desperto de deepSleep");
-  if (espMeshNow.getNodeId() == 0xCC7B5C36B65C)
-  {
+  if (espMeshNow.getNodeId() == 0xCC7B5C36B65C) {
     // delay(120e3);
-    while (true)
-    {
+    while (true) {
       espMeshNow.handle();
-      if (Serial.available())
-      {
-        String cmd = Serial.readStringUntil('\n');
+      if (Serial.available()) {
+        String       cmd = Serial.readStringUntil('\n');
         JsonDocument jsonDoc;
         cmd.toUpperCase();
         cmd.trim();
         jsonDoc["cmd"] = cmd;
-        jsonDoc["sq"] = esp_random();
-        espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
-        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY);
+        jsonDoc["sq"]  = esp_random();
+        espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
+        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
       }
       delay(50);
     }
-  }
-  else
-  {
-    for (int i = 0; i < 120; i++)
-    {
+  } else {
+    for (int i = 0; i < 120; i++) {
       espMeshNow.send(espMeshNow.getNodeId(), 0xCC7B5C36B65C, "PAQUETE: " + String(esp_random()));
       delay(10e3);
       espMeshNow.send(espMeshNow.getNodeId(), 0xCC7B5C36B65C, "SIGNED: " + String(esp_random()), espmeshnow::ESPMeshNowFlags_e::SIGNED);
