@@ -155,6 +155,34 @@ namespace espmeshnow {
     }
   }
 
+  void ESPMeshNow::_receivedCallback(uint64_t from, esp_mesh_now_packet_t packet) {
+    if ((packet.messageFlags & ENCODING_PACK) == ENCODING_PACK) {
+      JsonDocument         jsonDoc;
+      DeserializationError jsonError = deserializeMsgPack(jsonDoc, packet.data, packet.dataLen); // TODO: aplicar algun diccionario
+      if (jsonError) {
+        LOGF("Error deserializando MsgPack: %s\n", jsonError.c_str());
+      } else {
+        LOGF("Es un tipo MessagePack");
+        receivedCallbackJson(from, jsonDoc);
+      }
+    } else if ((packet.messageFlags & ENCODING_JSON) == ENCODING_JSON) {
+      JsonDocument         jsonDoc;
+      DeserializationError jsonError = deserializeJson(jsonDoc, packet.data, packet.dataLen);
+      if (jsonError) {
+        LOGF("Error deserializando Json: %s\n", jsonError.c_str());
+      } else {
+        LOGF("Es un tipo JSON");
+        receivedCallbackJson(from, jsonDoc);
+      }
+    } else if ((packet.messageFlags & ENCODING_STRING) == ENCODING_STRING) {
+      LOGF("Es un tipo String");
+      receivedCallbackString(from, String((char *)packet.data, packet.dataLen));
+    } else if ((packet.messageFlags & ENCODING_NONE) == ENCODING_NONE) {
+      LOGF("Es un tipo Binario");
+      receivedCallback(from, packet.data, packet.dataLen);
+    }
+  }
+
   void ESPMeshNow::espNowRecvCB(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
     uint64_t from = 0;
     from          = macToAddress((uint8_t *)mac_addr);
@@ -165,7 +193,10 @@ namespace espmeshnow {
         LOGLN("Paquete corrupto, largo demasiado grande");
       } else {
         newMessageReceived = true;
-        if (receivedCallback) {
+        if (receivedCallback && (packet.messageFlags & ENCODING_NONE) == ENCODING_NONE ||
+            receivedCallbackString && (packet.messageFlags & ENCODING_STRING) == ENCODING_STRING ||
+            receivedCallbackJson && (packet.messageFlags & ENCODING_JSON) == ENCODING_JSON ||
+            receivedCallbackJson && (packet.messageFlags & ENCODING_PACK) == ENCODING_PACK) {
 
           addPeer(from);
 
@@ -177,16 +208,16 @@ namespace espmeshnow {
           } else {
             // SI viene firmado, verifico la firma
             if ((packet.messageFlags & SIGNED) == SIGNED) {
-              LOGLN("********** Viene firmado: " + String(packet.messageFlags));
+              LOGLN(String("********** Viene firmado: ") + String(packet.messageFlags));
             }
             if ((packet.messageFlags & ENCRYPTED) == ENCRYPTED) {
-              LOGLN("********** Viene encriptado: " + String(packet.messageFlags));
+              LOGLN(String("********** Viene encriptado: ") + String(packet.messageFlags));
             }
 
             // Es para mi
             if (packet.dst == getNodeId()) {
               LOGLN("********** Es para mi");
-              receivedCallback(from, String((char *)packet.data));
+              _receivedCallback(from, packet);
             } else if (packet.dst == 0) // Es para todos
             {
               if (packet.messageFlags & FORWARD == FORWARD) // Es para todos y pide forward
@@ -197,7 +228,7 @@ namespace espmeshnow {
               {
                 LOGLN("********** Es para todos");
               }
-              receivedCallback(from, String((char *)packet.data));
+              _receivedCallback(from, packet);
             } else if (isMyPeer(packet.dst)) // Es para alguien mas y es mi vecino
             {
               LOGLN("********** Es para alguien mas y es mi vecino");
@@ -300,6 +331,12 @@ namespace espmeshnow {
     nodeId   = ESP.getEfuseMac();
     nodeId   = __builtin_bswap64(nodeId) >> 16;
 
+    sendMutex = xSemaphoreCreateMutex();
+    if (sendMutex == NULL) {
+      LOGLN("Error al crear el mutex");
+      return false;
+    }
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND || cleanNVS) {
       // Borra y vuelve a inicializar NVS si es necesario
@@ -351,6 +388,14 @@ namespace espmeshnow {
     ESPMeshNow::receivedCallback = onReceive;
   }
 
+  void ESPMeshNow::onReceive(receivedCallbackString_t onReceive) {
+    ESPMeshNow::receivedCallbackString = onReceive;
+  }
+
+  void ESPMeshNow::onReceive(receivedCallbackJson_t onReceive) {
+    ESPMeshNow::receivedCallbackJson = onReceive;
+  }
+
   void ESPMeshNow::onSend(sentCallback_t onSend) {
     ESPMeshNow::sentCallback = onSend;
   }
@@ -375,12 +420,21 @@ namespace espmeshnow {
   }
 
   esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, JsonDocument jsonDoc, uint8_t messageFlags) {
-    String msg;
-    if (measureJson(jsonDoc) > sizeof(esp_mesh_now_packet_t::data)) {
+    uint8_t data[ESP_NOW_MAX_DATA_LEN];
+    size_t  dataLen;
+    if ((messageFlags & ENCODING_PACK) == ENCODING_PACK) {
+      dataLen = measureMsgPack(jsonDoc);
+      serializeMsgPack(jsonDoc, &data, sizeof(data));
+      messageFlags = (messageFlags & (0xff ^ (0xff & ENCODING_PACK))) | ENCODING_PACK;
+    } else {
+      dataLen = measureJson(jsonDoc);
+      serializeJson(jsonDoc, &data, sizeof(data));
+      messageFlags = (messageFlags & (0xff ^ (0xff & ENCODING_PACK))) | ENCODING_JSON;
+    }
+    if (dataLen > sizeof(esp_mesh_now_packet_t::data)) {
       return ESP_ERR_INVALID_SIZE;
     }
-    serializeJson(jsonDoc, msg);
-    return send(srcId, dstId, (uint8_t *)msg.c_str(), msg.length(), (messageFlags & (0xff ^ (0xff & ENCODING_PACK))) | ENCODING_JSON);
+    return send(srcId, dstId, data, dataLen, messageFlags);
   }
 
   esp_err_t ESPMeshNow::send(uint64_t srcId, uint64_t dstId, uint8_t *data, size_t len, uint8_t messageFlags) {
@@ -415,21 +469,27 @@ namespace espmeshnow {
       LOGF("Enviando mensaje de %llX para %llX (real %llX): %s\n", srcId, dstId, to, data);
     else
       LOGF("Enviando mensaje de %llX para %llX (real %llX)\n", srcId, dstId, to);
-    addESPNowPeer(peer);
-    esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
-    lastSendError    = ESP_ERR_NOT_FINISHED;
-    esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&packet, sizeof(packet));
-    for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
-      delay(1);
-    if (lastSendError != ESP_NOW_SEND_SUCCESS) {
-      if (_sendQueueEnabled && (messageFlags & RETRY) == RETRY) {
-        if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN) {
-          memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
-          saveSendQueueToNVS();
+
+    esp_err_t result = ESP_NOW_SEND_FAIL;
+    if (xSemaphoreTake(sendMutex, pdMS_TO_TICKS(ESP_MESH_NOW_SEND_TIMEOUT_MS)) == pdTRUE) {
+      addESPNowPeer(peer);
+      esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
+      lastSendError = ESP_ERR_NOT_FINISHED;
+      result        = esp_now_send(peer.peer_addr, (uint8_t *)&packet, sizeof(packet));
+      for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
+        delay(1);
+      if (lastSendError != ESP_NOW_SEND_SUCCESS) {
+        if (_sendQueueEnabled && (messageFlags & RETRY) == RETRY) {
+          if (sendQueuePtr + 1 < ESP_MESH_NOW_SEND_QUEUE_LEN) {
+            memcpy(&sendQueue[++sendQueuePtr], &packet, sizeof(packet));
+            saveSendQueueToNVS();
+          }
         }
+        result = ESP_NOW_SEND_FAIL;
       }
-      result = ESP_NOW_SEND_FAIL;
+      xSemaphoreGive(sendMutex);
     }
+
     if (result != ESP_OK)
       packetSendResponse(result, &peer);
     return result;
@@ -492,28 +552,33 @@ namespace espmeshnow {
         } else {
           memcpy(peer.peer_addr, ESP_MESH_NOW_BROADCAST_ADDR, sizeof(peer.peer_addr));
         }
-        addESPNowPeer(peer);
-        lastSendError    = ESP_ERR_NOT_FINISHED;
-        esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&sendQueue[i].packet, sizeof(esp_mesh_now_packet_t));
-        for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
-          delay(1);
-        if (lastSendError != ESP_NOW_SEND_SUCCESS) {
-          LOGF("****** Fallo al reenviar (%d) %s\n", lastSendError, esp_err_to_name(lastSendError));
-          sendQueue[i].retries++;
-          if (sendQueue[i].retries > ESP_MESH_NOW_SEND_RETRIES) {
+
+        if (xSemaphoreTake(sendMutex, pdMS_TO_TICKS(ESP_MESH_NOW_SEND_TIMEOUT_MS)) == pdTRUE) {
+          addESPNowPeer(peer);
+          esp_wifi_set_channel(peer.channel, WIFI_SECOND_CHAN_NONE);
+          lastSendError    = ESP_ERR_NOT_FINISHED;
+          esp_err_t result = esp_now_send(peer.peer_addr, (uint8_t *)&sendQueue[i].packet, sizeof(esp_mesh_now_packet_t));
+          for (int ii = 0; ii < ESP_MESH_NOW_SEND_TIMEOUT_MS && lastSendError == ESP_ERR_NOT_FINISHED; ii++)
+            delay(1);
+          if (lastSendError != ESP_NOW_SEND_SUCCESS) {
+            LOGF("****** Fallo al reenviar (%d) %s\n", lastSendError, esp_err_to_name(lastSendError));
+            sendQueue[i].retries++;
+            if (sendQueue[i].retries > ESP_MESH_NOW_SEND_RETRIES) {
+              for (int j = i + 1; j <= sendQueuePtr; j++)
+                sendQueue[i] = sendQueue[j];
+              i--;
+              sendQueuePtr--;
+              saveSendQueueToNVS();
+            }
+          } else {
+            LOGLN("****** Reenviado OK");
             for (int j = i + 1; j <= sendQueuePtr; j++)
               sendQueue[i] = sendQueue[j];
             i--;
             sendQueuePtr--;
             saveSendQueueToNVS();
           }
-        } else {
-          LOGLN("****** Reenviado OK");
-          for (int j = i + 1; j <= sendQueuePtr; j++)
-            sendQueue[i] = sendQueue[j];
-          i--;
-          sendQueuePtr--;
-          saveSendQueueToNVS();
+          xSemaphoreGive(sendMutex);
         }
       }
       LOGF("SendQueue: %d / %d\n", sendQueuePtr + 1, ESP_MESH_NOW_SEND_QUEUE_LEN);

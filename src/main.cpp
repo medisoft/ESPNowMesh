@@ -1,4 +1,3 @@
-#define ESP_MESH_NOW_DEBUG_LOGGING
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
@@ -6,7 +5,15 @@
 
 ESPMeshNow_t espMeshNow;
 
-void receivedCallback(uint64_t from, String msg) {
+void receivedCallback(uint64_t from, uint8_t *data, size_t len) {
+  Serial.printf(">>> Received from %llX msg=%s\n", from, data);
+}
+void receivedCallbackJson(uint64_t from, JsonDocument jsonDoc) {
+  String msg;
+  serializeJson(jsonDoc, msg);
+  Serial.printf(">>> Received from %llX msg=%s\n", from, msg.c_str());
+}
+void receivedCallbackString(uint64_t from, String msg) {
   Serial.printf(">>> Received from %llX msg=%s\n", from, msg.c_str());
 }
 
@@ -25,6 +32,8 @@ void changedConnectionCallback() {
 void setup() {
   Serial.begin(115200);
   espMeshNow.init(2);
+  espMeshNow.onReceive(&receivedCallbackString);
+  espMeshNow.onReceive(&receivedCallbackJson);
   espMeshNow.onReceive(&receivedCallback);
   espMeshNow.onSend(&sentCallback);
   // espMeshNow.onNewConnection(&newConnectionCallback);
@@ -40,20 +49,37 @@ void setup() {
 }
 
 void loop() {
+  static int s = 1;
   Serial.println("Desperto de deepSleep");
   if (espMeshNow.getNodeId() == 0xCC7B5C36B65C) {
     // delay(120e3);
     while (true) {
       espMeshNow.handle();
-      if (Serial.available()) {
+      if (Serial.available() > 0) {
         String       cmd = Serial.readStringUntil('\n');
         JsonDocument jsonDoc;
         cmd.toUpperCase();
         cmd.trim();
-        jsonDoc["cmd"] = cmd;
-        jsonDoc["sq"]  = esp_random();
-        espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
-        espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
+        if (cmd.length() > 0) {
+          if (cmd.toInt() > 0)
+            s = cmd.toInt();
+          else {
+            jsonDoc["cmd"] = cmd;
+            jsonDoc["sq"]  = esp_random();
+            if (s == 3) {
+              espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
+              espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
+            }
+            if (s == 4) {
+              espMeshNow.send(espMeshNow.getNodeId(), 0x4022D8EDC1F0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD | espmeshnow::ESPMeshNowFlags_e::ENCODING_PACK);
+              espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD | espmeshnow::ESPMeshNowFlags_e::ENCODING_PACK);
+            }
+            if (s == 1)
+              espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD);
+            if (s == 2)
+              espMeshNow.send(espMeshNow.getNodeId(), 0x5443B2ABF2C0, jsonDoc, espmeshnow::ESPMeshNowFlags_e::RETRY | espmeshnow::ESPMeshNowFlags_e::FORWARD | espmeshnow::ESPMeshNowFlags_e::ENCODING_PACK);
+          }
+        }
       }
       delay(50);
     }

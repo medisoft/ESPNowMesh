@@ -1,7 +1,10 @@
-#ifndef _ESP_MESH_NOW_H_
-#define _ESP_MESH_NOW_H_
 #include <ArduinoJson.h>
 #include <esp_now.h>
+
+// #define ESP_MESH_NOW_DEBUG_LOGGING
+
+#ifndef _ESP_MESH_NOW_H_
+#define _ESP_MESH_NOW_H_
 
 #ifdef ESP_MESH_NOW_DEBUG_LOGGING
 #define LOG(x)    Serial.print(x)
@@ -41,7 +44,9 @@ namespace espmeshnow {
   } peers_list_t;
   typedef std::function<void(uint64_t nodeId)>                           newConnectionCallback_t;
   typedef std::function<void(uint64_t nodeId)>                           droppedConnectionCallback_t;
-  typedef std::function<void(uint64_t from, String msg)>                 receivedCallback_t;
+  typedef std::function<void(uint64_t from, uint8_t *data, size_t len)>  receivedCallback_t;
+  typedef std::function<void(uint64_t from, String msg)>                 receivedCallbackString_t;
+  typedef std::function<void(uint64_t from, JsonDocument jsonDoc)>       receivedCallbackJson_t;
   typedef std::function<void(uint64_t to, esp_now_send_status_t status)> sentCallback_t;
   typedef std::function<void()>                                          changedConnectionsCallback_t;
   typedef std::function<void(int32_t offset)>                            nodeTimeAdjustedCallback_t;
@@ -70,6 +75,8 @@ namespace espmeshnow {
   public:
     bool          init(uint8_t channel = 1, bool cleanNVS = false);
     void          onReceive(receivedCallback_t onReceive);
+    void          onReceive(receivedCallbackString_t onReceive);
+    void          onReceive(receivedCallbackJson_t onReceive);
     void          onSend(sentCallback_t onSend); // TODO
     void          onNewConnection(newConnectionCallback_t onNewConnection);
     void          onChangedConnections(changedConnectionsCallback_t onChangedConnections);
@@ -96,6 +103,8 @@ namespace espmeshnow {
     volatile esp_err_t lastSendError = ESP_ERR_NOT_FINISHED;
 
     receivedCallback_t           receivedCallback;
+    receivedCallbackString_t     receivedCallbackString;
+    receivedCallbackJson_t       receivedCallbackJson;
     sentCallback_t               sentCallback;
     newConnectionCallback_t      newConnectionCallback;
     changedConnectionsCallback_t changedConnectionsCallback;
@@ -131,6 +140,9 @@ namespace espmeshnow {
     peers_list_t *peersList;
     bool          _initialized      = false;
     bool          _sendQueueEnabled = true;
+    QueueHandle_t sendMutex;
+
+    void _receivedCallback(uint64_t from, esp_mesh_now_packet_t packet);
   };
 
 }; // namespace espmeshnow
