@@ -88,6 +88,7 @@ namespace espmeshnow {
     uint32_t      getNodeTime();
     void          setDebugMsgTypes(uint16_t types);
     peers_list_t *getKnownPeers();
+    uint16_t      peersCount();
     bool          isMyPeer(uint64_t nodeId);
     uint64_t      macToAddress(uint8_t *mac_addr);
     void          addressToMac(uint64_t addr, uint8_t *mac_addr);
@@ -115,7 +116,6 @@ namespace espmeshnow {
 
     void     addPeer(uint64_t nodeId);
     uint64_t getLeastSeenPeer();
-    uint16_t peersCount();
     bool     isMessageInCache(esp_mesh_now_packet_t packet, bool addIfNotExists);
     uint16_t messagesCount();
 
