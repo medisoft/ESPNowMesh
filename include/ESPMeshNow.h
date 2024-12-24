@@ -1,4 +1,5 @@
 #include <ArduinoJson.h>
+#include <WiFi.h>
 #include <esp_now.h>
 
 // #define ESP_MESH_NOW_DEBUG_LOGGING
