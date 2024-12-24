@@ -46,9 +46,12 @@ void setup() {
   // doc["cmd"] = "OTA";
   // doc["sq"] = esp_random();
   // espMeshNow.send(espMeshNow.getNodeId(), 0, doc, espmeshnow::ESPMeshNowFlags_e::FORWARD);
+  delay(10);
+  Serial.printf("Mi id es %llX\n", espMeshNow.getNodeId());
 }
 
 void loop() {
+#if 0
   static int s = 1;
   Serial.println("Desperto de deepSleep");
   if (espMeshNow.getNodeId() == 0xCC7B5C36B65C) {
@@ -102,4 +105,5 @@ void loop() {
   Serial.println("Entrando a deepSleep");
   delay(50);
   esp_deep_sleep(10e6);
+#endif
 }
